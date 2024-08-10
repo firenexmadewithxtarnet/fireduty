@@ -274,7 +274,7 @@
     // Model loading
     const loader = new THREE.GLTFLoader();
     let characterControls;
-    loader.load("mks.glb", (gltf) => {
+    loader.load("mks1.glb", (gltf) => {
       const model = gltf.scene;
       model.traverse((object) => {
         if (object.isMesh) object.castShadow = true;
