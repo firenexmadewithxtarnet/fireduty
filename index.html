@@ -22,7 +22,8 @@
     </style>
 </head>
 <body>
-    <div id="message"><!DOCTYPE html>
+    <div id="message">
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -42,7 +43,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      touch-action: none; /* Prevents default touch actions */
+      touch-action: none;
     }
     #joystick::before {
       content: '';
@@ -65,7 +66,7 @@
       color: white;
       font-size: 20px;
       cursor: pointer;
-      touch-action: none; /* Prevents default touch actions */
+      touch-action: none;
     }
   </style>
 </head>
@@ -79,7 +80,6 @@
   <div id="runButton">Run</div>
 
   <script>
-    // Scene setup
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xa8def0);
 
@@ -118,7 +118,7 @@
     scene.add(dirLight);
 
     const textureLoader = new THREE.TextureLoader();
-    const sandBaseColor = textureLoader.load("Grass01_BigUV.jpg");
+    const sandBaseColor = textureLoader.load("textures/sand/Sand 002_COLOR.jpg");
     const sandNormalMap = textureLoader.load("textures/sand/Sand 002_NRM.jpg");
     const sandHeightMap = textureLoader.load("textures/sand/Sand 002_DISP.jpg");
     const sandAmbientOcclusion = textureLoader.load("textures/sand/Sand 002_OCC.jpg");
@@ -139,9 +139,9 @@
     sandHeightMap.wrapS = sandHeightMap.wrapT = THREE.RepeatWrapping;
     sandAmbientOcclusion.wrapS = sandAmbientOcclusion.wrapT = THREE.RepeatWrapping;
 
-    sandBaseColor.repeat.set(100, 100);
-    sandNormalMap.repeat.set(100, 100);
-    sandHeightMap.repeat.set(100, 100);
+    sandBaseColor.repeat.set(10, 10);
+    sandNormalMap.repeat.set(10, 10);
+    sandHeightMap.repeat.set(10, 10);
     sandAmbientOcclusion.repeat.set(10, 10);
 
     const floor = new THREE.Mesh(geometry, material);
@@ -149,7 +149,6 @@
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
 
-    // Character Controls
     class CharacterControls {
       constructor(model, mixer, animationsMap, orbitControl, camera, currentAction) {
         this.model = model;
@@ -180,14 +179,7 @@
       }
 
       update(delta, joystickDirection, isRunning) {
-        const keysPressed = {
-          'w': joystickDirection.z > 0,
-          's': joystickDirection.z < 0,
-          'a': joystickDirection.x < 0,
-          'd': joystickDirection.x > 0
-        };
-
-        const directionPressed = ['w', 'a', 's', 'd'].some(key => keysPressed[key]);
+        const directionPressed = joystickDirection.length() > 0;
 
         let play = '';
         if (directionPressed && isRunning) {
@@ -215,7 +207,7 @@
             (this.camera.position.x - this.model.position.x),
             (this.camera.position.z - this.model.position.z)
           );
-          const directionOffset = this.directionOffset(keysPressed);
+          const directionOffset = this.calculateDirectionOffset(joystickDirection);
 
           this.rotateQuarternion.setFromAxisAngle(this.rotateAngle, angleYCameraDirection + directionOffset);
           this.model.quaternion.rotateTowards(this.rotateQuarternion, 0.2);
@@ -227,8 +219,8 @@
 
           const velocity = this.currentAction == 'Run' ? this.runVelocity : this.walkVelocity;
 
-          const moveX = this.walkDirection.x * velocity * delta;
-          const moveZ = this.walkDirection.z * velocity * delta;
+          const moveX = this.walkDirection.x * velocity * delta * joystickDirection.z;
+          const moveZ = this.walkDirection.z * velocity * delta * joystickDirection.z;
           this.model.position.x += moveX;
           this.model.position.z += moveZ;
           this.updateCameraTarget(moveX, moveZ);
@@ -244,106 +236,75 @@
         this.orbitControl.target = this.cameraTarget;
       }
 
-      directionOffset(keysPressed) {
-        let directionOffset = 0;
+      calculateDirectionOffset(joystickDirection) {
+        return Math.atan2(joystickDirection.x, joystickDirection.z);
+      }
+    }
 
-        if (keysPressed['w']) {
-          if (keysPressed['a']) {
-            directionOffset = Math.PI / 4;
-          } else if (keysPressed['d']) {
-            directionOffset = -Math.PI / 4;
-          }
-        } else if (keysPressed['s']) {
-          if (keysPressed['a']) {
-            directionOffset = Math.PI / 4 + Math.PI / 2;
-          } else if (keysPressed['d']) {
-            directionOffset = -Math.PI / 4 - Math.PI / 2;
-          } else {
-            directionOffset = Math.PI;
-          }
-        } else if (keysPressed['a']) {
-          directionOffset = Math.PI / 2;
-        } else if (keysPressed['d']) {
-          directionOffset = -Math.PI / 2;
+    const gltfLoader = new THREE.GLTFLoader();
+    gltfLoader.load(
+      'mks.glb',
+      (gltf) => {
+        const model = gltf.scene;
+        model.scale.set(1, 1, 1);
+        model.position.set(0, 0, 0);
+        scene.add(model);
+
+        const gltfAnimations = gltf.animations;
+        const mixer = new THREE.AnimationMixer(model);
+        const animationsMap = new Map();
+        gltfAnimations.filter(a => a.name != 'TPose').forEach((a) => {
+          animationsMap.set(a.name, mixer.clipAction(a));
+        });
+
+        const characterControls = new CharacterControls(model, mixer, animationsMap, orbitControls, camera, 'Idle');
+
+        const clock = new THREE.Clock();
+        const joystick = document.getElementById('joystick');
+        let joystickDirection = new THREE.Vector3();
+        let isRunning = false;
+
+        joystick.addEventListener('touchstart', (event) => {
+          const touch = event.touches[0];
+          joystickDirection.set(0, 0, 0);
+        });
+
+        joystick.addEventListener('touchmove', (event) => {
+          const touch = event.touches[0];
+          const rect = joystick.getBoundingClientRect();
+          const x = touch.clientX - rect.left - rect.width / 2;
+          const y = touch.clientY - rect.top - rect.height / 2;
+
+          joystickDirection.set(x, 0, -y).normalize();
+        });
+
+        joystick.addEventListener('touchend', (event) => {
+          joystickDirection.set(0, 0, 0);
+        });
+
+        document.getElementById('runButton').addEventListener('touchstart', () => {
+          isRunning = true;
+        });
+
+        document.getElementById('runButton').addEventListener('touchend', () => {
+          isRunning = false;
+        });
+
+        function animate() {
+          const delta = clock.getDelta();
+          characterControls.update(delta, joystickDirection, isRunning);
+          orbitControls.update();
+          renderer.render(scene, camera);
+          requestAnimationFrame(animate);
         }
 
-        return directionOffset;
+        animate();
+      },
+      undefined,
+      function (error) {
+        console.error(error);
       }
-    }
-
-    // Model loading
-    const loader = new THREE.GLTFLoader();
-    let characterControls;
-    loader.load("mks1.glb", (gltf) => {
-      const model = gltf.scene;
-      model.traverse((object) => {
-        if (object.isMesh) object.castShadow = true;
-      });
-      scene.add(model);
-
-      const mixer = new THREE.AnimationMixer(model);
-      const animationsMap = new Map();
-      gltf.animations.filter(a => a.name !== 'TPose').forEach((a) => {
-        animationsMap.set(a.name, mixer.clipAction(a));
-      });
-
-      characterControls = new CharacterControls(model, mixer, animationsMap, orbitControls, camera, 'Idle');
-    });
-
-    // Virtual Controls
-    const joystick = document.getElementById('joystick');
-    const runButton = document.getElementById('runButton');
-
-    let joystickDirection = { x: 0, z: 0 };
-
-    joystick.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      updateJoystick(e.touches[0]);
-    });
-
-    joystick.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      updateJoystick(e.touches[0]);
-    });
-
-    joystick.addEventListener('touchend', () => {
-      joystickDirection = { x: 0, z: 0 };
-    });
-
-    function updateJoystick(touch) {
-      const rect = joystick.getBoundingClientRect();
-      const x = (touch.clientX - rect.left - rect.width / 2) / (rect.width / 2);
-      const z = (touch.clientY - rect.top - rect.height / 2) / (rect.height / 2);
-      joystickDirection = { x: Math.max(-1, Math.min(1, x)), z: Math.max(-1, Math.min(1, z)) };
-    }
-
-    let isRunning = false;
-    runButton.addEventListener('touchstart', () => {
-      isRunning = !isRunning;
-      runButton.textContent = isRunning ? 'Walk' : 'Run';
-    });
-
-    // Animation loop
-    function animate() {
-      requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-
-      if (characterControls) {
-        characterControls.update(delta, joystickDirection, isRunning);
-      }
-
-      orbitControls.update();
-      renderer.render(scene, camera);
-    }
-    const clock = new THREE.Clock();
-    animate();
-
-    // Handle window resize
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+    );
   </script>
 </body>
 </html>
